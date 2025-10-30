@@ -10,6 +10,28 @@ RSpec.describe Hanami::Reloader::Commands::Server do
     let(:code_reloading) { true }
     let(:guardfile) { Hanami::Reloader::Commands::Guardfile.default_path }
     let(:port) { 2300 }
+    let(:err) { StringIO.new }
+
+    context "when in production env" do
+      before { ENV["HANAMI_ENV"] = "production" }
+      after { ENV.delete("HANAMI_ENV") }
+
+      it "prints a warning when running hanami server in production" do
+        allow_any_instance_of(described_class).to receive(:err).and_return(err)
+        server = described_class.new(server: proc { |*| })
+
+        expect(err).to receive(:puts).with(a_string_including("WARNING: You are running `hanami server` in the production environment via hanami-reloader."))
+
+        server.call(**args)
+      end
+
+      it "does not start guard despite code_reloading being enabled" do
+        server = described_class.new(server: proc { |*| })
+        expect(server).to_not receive(:exec).with("bundle exec guard -n f -i -g server -G Guardfile")
+
+        server.call(**args)
+      end
+    end
 
     context "with code reloading enabled" do
       context "with default arguments" do
