@@ -10,17 +10,17 @@ RSpec.describe Hanami::Reloader::Commands::Server do
     let(:code_reloading) { true }
     let(:guardfile) { Hanami::Reloader::Commands::Guardfile.default_path }
     let(:port) { 2300 }
-    let(:out) { StringIO.new }
+    let(:err) { StringIO.new }
 
     context "when in production env" do
       before { ENV["HANAMI_ENV"] = "production" }
       after { ENV.delete("HANAMI_ENV") }
 
       it "prints a warning when running hanami server in production" do
-        allow_any_instance_of(described_class).to receive(:out).and_return(out)
+        allow_any_instance_of(described_class).to receive(:err).and_return(err)
         server = described_class.new(server: proc { |*| })
 
-        expect(out).to receive(:puts).with("WARNING: You are running hanami server in production environment, code reloading is disabled but hanami server is intended to be used only on development. For production, you should use the rack handler command directly (i.e. `bundle exec puma -C config/puma.rb`).")
+        expect(err).to receive(:puts).with(a_string_including("WARNING: You are running `hanami server` in the production environment via hanami-reloader."))
 
         server.call(**args)
       end

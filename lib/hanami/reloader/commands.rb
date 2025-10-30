@@ -79,10 +79,17 @@ module Hanami
           code_reloading = args.fetch(:code_reloading)
 
           if ENV["HANAMI_ENV"] == "production"
-            out.puts "WARNING: You are running hanami server in production environment, " \
-                     "code reloading is disabled but hanami server is intended to be used only on development. " \
-                     "For production, you should use the rack handler command directly (i.e. `bundle exec puma -C " \
-                     "config/puma.rb`)."
+            msg = <<~TEXT
+              WARNING: You are running `hanami server` in the production environment via hanami-reloader.
+
+              Code reloading is disabled, but `hanami server` and hanami-reloader are intended to be used in
+              development only.
+
+              For production, start your web server directly, e.g. `bundle exec puma -C config/puma.rb`.
+            TEXT
+
+            err.puts msg
+
             return super
           end
 
