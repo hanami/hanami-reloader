@@ -2,6 +2,12 @@
 
 Code reloading for Hanami 2
 
+## v2.3.0
+
+### Changed
+
+- Skip reloading and print a warning if used in production env. (@krzykamil in #32)
+
 ## v2.3.0.beta2 - 2025-10-17
 
 ### Changed
