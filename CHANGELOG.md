@@ -2,7 +2,7 @@
 
 Code reloading for Hanami 2
 
-## v2.3.0
+## v2.3.0 - 2025-11-12
 
 ### Changed
 
