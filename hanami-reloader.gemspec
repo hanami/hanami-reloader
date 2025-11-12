@@ -27,7 +27,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "guard", "~> 2.19"
   spec.add_dependency "guard-puma", "~> 0.8"
-  spec.add_dependency "hanami-cli", "~> 2.3.0.beta2"
+  spec.add_dependency "hanami-cli", "~> 2.3.0"
   spec.add_dependency "zeitwerk", "~> 2.6"
 
   spec.add_development_dependency "bundler", ">= 1.6", "< 3"
