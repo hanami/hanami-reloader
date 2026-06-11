@@ -19,7 +19,15 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 
 ### Security
 
-[Unreleased]: https://github.com/hanami/reloader/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/hanami/reloader/compare/v3.0.0.rc1...HEAD
+
+## [3.0.0.rc1]
+
+### Changed
+
+- Require Ruby 3.3 or newer.
+
+[3.0.0.rc1]: https://github.com/hanami/reloader/compare/v2.3.0...v3.0.0.rc1
 
 ## [2.3.0] - 2025-11-12
 
