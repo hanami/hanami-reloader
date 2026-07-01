@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
 
   spec.add_runtime_dependency "guard", "~> 2.19"
   spec.add_runtime_dependency "guard-puma", "~> 0.8"
-  spec.add_runtime_dependency "hanami-cli", "~> 3.0.0.rc"
+  spec.add_runtime_dependency "hanami-cli", "~> 3.0.0"
   spec.add_runtime_dependency "zeitwerk", "~> 2.6"
 end
 
