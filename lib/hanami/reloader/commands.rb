@@ -48,7 +48,7 @@ module Hanami
             group :#{Guardfile.group} do
               guard "puma", port: ENV.fetch("#{Hanami::Port::ENV_VAR}", #{Hanami::Port::DEFAULT}), environment: ENV.fetch("HANAMI_ENV", "development") do
                 # Edit the following regular expression for your needs.
-                # See: https://guides.hanamirb.org/app/code-reloading/
+                # See: https://hanakai.org/learn/hanami/app/code-reloading/
                 watch(%r{^(app|config|lib|slices)([\\/][^\\/]+)*.(rb|erb|haml|slim)$}i)
               end
             end
