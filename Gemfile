@@ -12,7 +12,9 @@ end
 
 gem "hanami-utils", github: "hanami/utils", branch: "main"
 gem "hanami-cli", github: "hanami/cli", branch: "main"
-gem "hanami", github: "hanami/hanami", branch: "main"
+# Targets the in-place code reloading branch, which this gem depends on for
+# `Hanami::Slice#reload!`. Restore to `branch: "main"` once that has landed.
+gem "hanami", github: "hanami/hanami", branch: "internal-code-reloading"
 
 gem "hanami-devtools", github: "hanami/devtools", branch: "main"
 

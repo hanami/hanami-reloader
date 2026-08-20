@@ -1,155 +1,118 @@
 # frozen_string_literal: true
 
-require "pathname"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe Hanami::Reloader::Commands::Server do
+  subject(:command) { described_class.new(server: server, out: out, err: err) }
+
+  let(:captured) { {} }
+  let(:server) do
+    spy("server").tap { |s| allow(s).to receive(:call) { |**kwargs| captured.replace(kwargs) } }
+  end
+  let(:out) { StringIO.new }
+  let(:err) { StringIO.new }
+
+  let(:args) { {code_reloading: code_reloading, port: port} }
+  let(:code_reloading) { true }
+  let(:port) { Hanami::Port::DEFAULT }
+
+  before { ENV.delete("HANAMI_PORT") }
+  after { ENV.delete("HANAMI_PORT") }
+
+  # The reloading runner is covered by its own spec; here we only care that the command reaches
+  # for it, and with which options.
+  let(:reloading_server) { spy("reloading server") }
+  before do
+    allow(command).to receive(:reloading_server).and_return(reloading_server)
+    allow(reloading_server).to receive(:call) { |**kwargs| captured.replace(kwargs) }
+  end
+
   describe "#call" do
-    before { ENV.delete("HANAMI_PORT") }
-
-    let(:args) { {code_reloading: code_reloading, guardfile: guardfile, port: port} }
-    let(:code_reloading) { true }
-    let(:guardfile) { Hanami::Reloader::Commands::Guardfile.default_path }
-    let(:port) { 2300 }
-    let(:err) { StringIO.new }
-
-    context "when in production env" do
-      before { ENV["HANAMI_ENV"] = "production" }
-      after { ENV.delete("HANAMI_ENV") }
-
-      it "prints a warning when running hanami server in production" do
-        allow_any_instance_of(described_class).to receive(:err).and_return(err)
-        server = described_class.new(server: proc { |*| })
-
-        expect(err).to receive(:puts).with(a_string_including("WARNING: You are running `hanami server` in the production environment via hanami-reloader."))
-
-        server.call(**args)
-      end
-
-      it "does not start guard despite code_reloading being enabled" do
-        server = described_class.new(server: proc { |*| })
-        expect(server).to_not receive(:exec).with("bundle exec guard -n f -i -g server -G Guardfile")
-
-        server.call(**args)
-      end
-    end
-
     context "with code reloading enabled" do
-      context "with default arguments" do
-        it "starts server" do
-          allow(subject).to receive(:exec).with("bundle exec guard -n f -i -g server -G Guardfile")
+      it "serves through the reloading runner rather than the plain one" do
+        command.call(**args)
 
-          subject.call(**args)
-        end
+        expect(reloading_server).to have_received(:call)
+        expect(server).not_to have_received(:call)
       end
 
-      context "without .env port" do
-        it "doesn't set HANAMI_PORT" do
-          allow(subject).to receive(:exec)
-          subject.call(**args)
+      it "does not shell out to Guard" do
+        expect(command).not_to receive(:exec)
+
+        command.call(**args)
+      end
+
+      context "without a port in the environment" do
+        it "does not set HANAMI_PORT" do
+          command.call(**args)
 
           expect(ENV.fetch("HANAMI_PORT", nil)).to be(nil)
         end
 
-        context "with custom port CLI option" do
+        context "with a custom port CLI option" do
           let(:port) { 9000 }
 
-          it "sets HANAMI_PORT value" do
-            allow(subject).to receive(:exec)
-            subject.call(**args)
+          it "sets HANAMI_PORT and serves on that port" do
+            command.call(**args)
 
-            expect(ENV.fetch("HANAMI_PORT", nil)).to eq(port.to_s)
+            expect(ENV.fetch("HANAMI_PORT", nil)).to eq("9000")
+            expect(captured[:port]).to eq(9000)
           end
         end
       end
 
-      context "with .env port" do
-        before { ENV["HANAMI_PORT"] = dotenv_port.to_s }
-        let(:dotenv_port) { 9000 }
+      context "with a port in the environment" do
+        before { ENV["HANAMI_PORT"] = "9000" }
 
-        it "respects HANAMI_PORT value" do
-          allow(subject).to receive(:exec)
-          subject.call(**args)
+        it "serves on the environment's port" do
+          command.call(**args)
 
-          expect(ENV.fetch("HANAMI_PORT", nil)).to eq(dotenv_port.to_s)
+          expect(ENV.fetch("HANAMI_PORT", nil)).to eq("9000")
+          expect(captured[:port]).to eq(9000)
         end
 
-        context "with custom port CLI option" do
+        context "with a custom port CLI option" do
           let(:port) { 18_000 }
-          let(:cli_arg_port) { port }
 
-          it "overrides HANAMI_PORT value" do
-            allow(subject).to receive(:exec)
-            subject.call(**args)
+          it "lets the CLI option win" do
+            command.call(**args)
 
-            expect(ENV.fetch("HANAMI_PORT", nil)).to eq(cli_arg_port.to_s)
+            expect(ENV.fetch("HANAMI_PORT", nil)).to eq("18000")
+            expect(captured[:port]).to eq(18_000)
           end
         end
       end
     end
 
     context "with code reloading disabled" do
-      subject { described_class.new(server: server) }
       let(:code_reloading) { false }
-      let(:server) { proc { |*| } }
 
-      it "starts original hanami-cli server" do
-        allow(server).to receive(:call)
+      it "serves through the plain runner" do
+        command.call(**args)
 
-        subject.call(**args)
-      end
-
-      context "without .env port" do
-        it "doesn't set HANAMI_PORT" do
-          allow(server).to receive(:call)
-          subject.call(**args)
-
-          expect(ENV.fetch("HANAMI_PORT", nil)).to be(nil)
-        end
-
-        context "with custom port CLI option" do
-          let(:port) { 9000 }
-
-          it "doesn't set HANAMI_PORT" do
-            allow(server).to receive(:call)
-            subject.call(**args)
-
-            expect(ENV.fetch("HANAMI_PORT", nil)).to be(nil)
-          end
-        end
-      end
-
-      context "with .env port" do
-        before { ENV["HANAMI_PORT"] = dotenv_port.to_s }
-        let(:dotenv_port) { 9000 }
-
-        it "respects HANAMI_PORT value" do
-          allow(server).to receive(:call)
-          subject.call(**args)
-
-          expect(ENV.fetch("HANAMI_PORT", nil)).to eq(dotenv_port.to_s)
-        end
-
-        context "with custom port CLI option" do
-          let(:port) { 18_000 }
-          let(:cli_arg_port) { port }
-
-          it "respects HANAMI_PORT value" do
-            allow(server).to receive(:call)
-            subject.call(**args)
-
-            expect(ENV.fetch("HANAMI_PORT", nil)).to eq(dotenv_port.to_s)
-          end
-        end
+        expect(server).to have_received(:call)
+        expect(reloading_server).not_to have_received(:call)
       end
     end
 
-    context "with custom Guardfile path" do
-      let(:guardfile) { Pathname.new(Dir.pwd).join("Guardfile") }
+    context "in the production environment" do
+      before { ENV["HANAMI_ENV"] = "production" }
+      after { ENV.delete("HANAMI_ENV") }
 
-      it "uses given value" do
-        allow(subject).to receive(:exec).with("bundle exec guard -n f -i -g server -G #{guardfile}")
+      it "warns" do
+        command.call(**args)
 
-        subject.call(**args)
+        expect(err.string).to include(
+          "WARNING: You are running `hanami server` in the production environment via hanami-reloader."
+        )
+      end
+
+      it "serves through the plain runner, despite code reloading being enabled" do
+        command.call(**args)
+
+        expect(server).to have_received(:call)
+        expect(reloading_server).not_to have_received(:call)
       end
     end
   end
