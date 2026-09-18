@@ -9,20 +9,29 @@ RSpec.describe Hanami::Reloader::Middleware do
   let(:out) { StringIO.new }
   let(:env) { {"PATH_INFO" => "/"} }
 
-  # Stands in for a slice class (e.g. `Hanami.app`), which responds to `reload!`.
-  let(:slice) { double("slice", reload!: true) }
+  # Stands in for a slice class (e.g. `Hanami.app`), which responds to `reload!` and `config`.
+  let(:slice) { double("slice", reload!: true, config: config) }
+  let(:config) { double("config", render_detailed_errors: true) }
 
   let(:file_checker) do
     instance_double(
       Hanami::Reloader::FileChecker,
-      updated?: updated, restart_required: restart_required, commit!: true
+      updated?: updated, restart_required: restart_required, commit!: true, failed!: true
     )
   end
   let(:updated) { false }
   let(:restart_required) { [] }
 
+  # hanami-webconsole is not in this gem's bundle, so unless a spec says otherwise the reloader
+  # has nothing to render an error with.
+  before { allow(Hanami).to receive(:bundled?).with("hanami-webconsole").and_return(false) }
+
   it "passes the request through" do
-    expect(middleware.call(env)).to eq([200, {}, ["ok"]])
+    status, headers, body = middleware.call(env)
+
+    expect(status).to eq(200)
+    expect(headers).to eq({})
+    expect(read(body)).to eq("ok")
   end
 
   context "when nothing has changed" do
@@ -68,10 +77,175 @@ RSpec.describe Hanami::Reloader::Middleware do
         expect { middleware.call(env) }.to raise_error(SyntaxError)
       end
 
-      it "does not commit, so the next request retries the reload" do
+      it "does not dispatch into the half-unloaded app" do
+        expect(inner).not_to receive(:call)
+
+        expect { middleware.call(env) }.to raise_error(SyntaxError)
+      end
+
+      it "does not commit, so the fixed file is still picked up" do
         expect(file_checker).not_to receive(:commit!)
 
         expect { middleware.call(env) }.to raise_error(SyntaxError)
+      end
+
+      it "tells the file_checker the attempt failed, so it is not retried every request" do
+        expect(file_checker).to receive(:failed!)
+
+        expect { middleware.call(env) }.to raise_error(SyntaxError)
+      end
+    end
+  end
+
+  describe "rendering a failed reload" do
+    # Stands in for a real checker rather than answering `updated?` the same way forever: the
+    # change stays outstanding until it is committed, and a failed attempt is not reported again
+    # until the files change.
+    let(:file_checker) do
+      Class.new do
+        attr_reader :checks
+
+        def initialize
+          @changed = true
+          @failed = false
+          @checks = 0
+        end
+
+        def updated? = @changed && !@failed
+
+        def commit! = tap { @changed = false; @failed = false }
+
+        def failed! = tap { @failed = true }
+
+        def restart_required
+          @checks += 1
+          []
+        end
+
+        # The developer saves a fix.
+        def touch! = tap { @changed = true; @failed = false }
+      end.new
+    end
+
+    before { allow(slice).to receive(:reload!).and_raise(SyntaxError, "unexpected end") }
+
+    context "when webconsole is not available" do
+      it "re-raises, as the reloader has always done" do
+        expect { middleware.call(env) }.to raise_error(SyntaxError, "unexpected end")
+      end
+    end
+
+    context "when webconsole is available" do
+      # Stands in for `Hanami::Webconsole::Middleware`: renders whatever the app below it raises,
+      # and answers its own console endpoints without dispatching at all. Reporting how many pages
+      # it has rendered is how a spec can tell it is still the same instance.
+      let(:webconsole_class) do
+        Class.new do
+          attr_reader :app, :config, :rendered
+
+          def initialize(app, config)
+            @app = app
+            @config = config
+            @rendered = []
+          end
+
+          def call(env)
+            return [200, {}, ["console for #{@rendered.length} page(s)"]] if console?(env)
+
+            @app.call(env)
+          rescue Exception => exception # rubocop:disable Lint/RescueException
+            @rendered << exception
+            [500, {}, ["rendered #{exception.class}: #{exception.message}"]]
+          end
+
+          private
+
+          def console?(env)
+            env["PATH_INFO"].to_s.start_with?("/_hanami/webconsole")
+          end
+        end
+      end
+
+      before do
+        allow(Hanami).to receive(:bundled?).with("hanami-webconsole").and_return(true)
+
+        stub_const("Hanami::Webconsole", Module.new)
+        stub_const("Hanami::Webconsole::MOUNT_PATH", "/_hanami/webconsole")
+        stub_const("Hanami::Webconsole::Middleware", webconsole_class)
+      end
+
+      it "renders the error instead of letting it reach the server" do
+        status, _headers, body = middleware.call(env)
+
+        expect(status).to eq(500)
+        expect(read(body)).to eq("rendered SyntaxError: unexpected end")
+      end
+
+      it "does not dispatch into the half-unloaded app" do
+        expect(inner).not_to receive(:call)
+
+        middleware.call(env)
+      end
+
+      it "keeps rendering it while the file is unchanged, without retrying the reload" do
+        middleware.call(env)
+
+        expect(slice).to receive(:reload!).never
+
+        status, _headers, body = middleware.call(env)
+
+        expect(status).to eq(500)
+        expect(read(body)).to eq("rendered SyntaxError: unexpected end")
+      end
+
+      it "retries once the file changes again, and serves the app when the reload succeeds" do
+        middleware.call(env)
+
+        allow(slice).to receive(:reload!).and_return(true)
+        file_checker.touch!
+
+        status, _headers, body = middleware.call(env)
+
+        expect(status).to eq(200)
+        expect(read(body)).to eq("ok")
+      end
+
+      it "does not render when the app has detailed errors turned off" do
+        allow(config).to receive(:render_detailed_errors).and_return(false)
+
+        expect { middleware.call(env) }.to raise_error(SyntaxError)
+      end
+
+      describe "console requests" do
+        let(:console_env) { {"PATH_INFO" => "/_hanami/webconsole/0-abc/eval"} }
+
+        it "reach the webconsole that rendered the page" do
+          middleware.call(env)
+
+          _status, _headers, body = middleware.call(console_env)
+
+          # One page rendered means this is the same instance that holds it.
+          expect(read(body)).to eq("console for 1 page(s)")
+        end
+
+        it "do not attempt a reload" do
+          middleware.call(env)
+          checks = file_checker.checks
+
+          expect(slice).to receive(:reload!).never
+
+          middleware.call(console_env)
+
+          expect(file_checker.checks).to eq(checks)
+        end
+
+        it "are dispatched to the app as usual when no reload is failing" do
+          file_checker.commit!
+
+          _status, _headers, body = middleware.call(console_env)
+
+          expect(read(body)).to eq("ok")
+        end
       end
     end
   end
@@ -87,7 +261,66 @@ RSpec.describe Hanami::Reloader::Middleware do
     end
 
     it "still serves the request" do
-      expect(middleware.call(env)).to eq([200, {}, ["ok"]])
+      status, _headers, body = middleware.call(env)
+
+      expect(status).to eq(200)
+      expect(read(body)).to eq("ok")
+    end
+  end
+
+  describe "excluding reloads from in-flight requests" do
+    it "wraps the body so the request is not over until the body is closed" do
+      _, _, body = middleware.call(env)
+
+      expect(body).to be_a(Rack::BodyProxy)
+      expect(body).not_to be_closed
+
+      body.close
+
+      expect(body).to be_closed
+    end
+
+    it "waits for an open response body before reloading" do
+      # First request: nothing has changed yet, so it just dispatches. Its body is left open, as it
+      # would be while a server is still streaming the response.
+      _, _, open_body = middleware.call(env)
+
+      # Now a change lands, and a second request arrives wanting to reload.
+      reloaded = Queue.new
+      allow(file_checker).to receive(:updated?).and_return(true)
+      allow(slice).to receive(:reload!) { reloaded << :reloaded }
+
+      second = Thread.new { read(middleware.call(env)[2]) }
+
+      # The reload cannot start while the first body still holds a read lock.
+      expect { reloaded.pop(true) }.to raise_error(ThreadError)
+
+      open_body.close
+      second.join
+
+      expect(reloaded.size).to eq(1)
+    end
+
+    it "releases the read lock when the app raises" do
+      calls = 0
+      app = described_class.new(
+        ->(_env) {
+          calls += 1
+          raise "boom" if calls == 1
+
+          [200, {}, ["ok"]]
+        },
+        file_checker: file_checker, slice: slice, out: out
+      )
+
+      expect { app.call(env) }.to raise_error("boom")
+
+      # The lock would still be held if the failed dispatch had not released it, and this reload
+      # would block forever.
+      allow(file_checker).to receive(:updated?).and_return(true)
+      expect(slice).to receive(:reload!)
+
+      read(app.call(env)[2])
     end
   end
 
@@ -96,14 +329,17 @@ RSpec.describe Hanami::Reloader::Middleware do
 
     it "reloads only once" do
       reloads = 0
+      committed = false
       mutex = Mutex.new
+
       allow(slice).to receive(:reload!) { mutex.synchronize { reloads += 1 } }
 
-      # After the first reload commits, the file_checker reports no further change.
-      allow(file_checker).to receive(:updated?).and_return(true, false, false, false)
+      # Stands in for a real checker: the change stays outstanding until it is committed.
+      allow(file_checker).to receive(:updated?) { !committed }
+      allow(file_checker).to receive(:commit!) { committed = true }
 
       app = described_class.new(inner, file_checker: file_checker, slice: slice, out: out)
-      4.times.map { Thread.new { app.call(env) } }.each(&:join)
+      4.times.map { Thread.new { read(app.call(env)[2]) } }.each(&:join)
 
       expect(reloads).to eq(1)
     end

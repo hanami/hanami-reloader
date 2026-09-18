@@ -104,6 +104,57 @@ RSpec.describe Hanami::Reloader::FileChecker do
     end
   end
 
+  describe "#failed!" do
+    it "stops reporting the change that failed, so it is not retried on every request" do
+      file_checker
+      touch("app/greeter.rb")
+
+      expect(file_checker.updated?).to be(true)
+
+      file_checker.failed!
+
+      expect(file_checker.updated?).to be(false)
+    end
+
+    it "reports again as soon as the files change, so a fix is picked up" do
+      file_checker
+      touch("app/greeter.rb", offset: 10)
+      file_checker.updated?
+      file_checker.failed!
+
+      touch("app/greeter.rb", offset: 20)
+
+      expect(file_checker.updated?).to be(true)
+    end
+
+    it "reports a return to the committed state, since the failed reload tore the app down" do
+      file_checker
+      write("app/broken.rb")
+      file_checker.updated?
+      file_checker.failed!
+
+      FileUtils.rm(dir.join("app/broken.rb"))
+
+      expect(file_checker.updated?).to be(true)
+    end
+
+    it "does not commit, so the change is still outstanding" do
+      file_checker
+      touch("app/greeter.rb", offset: 10)
+      file_checker.updated?
+      file_checker.failed!
+
+      # Reverting to the state that was last committed is a change too, and must be seen.
+      touch("app/greeter.rb", offset: 20)
+      expect(file_checker.updated?).to be(true)
+
+      file_checker.commit!
+      file_checker.failed!
+
+      expect(file_checker.updated?).to be(false)
+    end
+  end
+
   describe "#restart_required" do
     before { write("config/app.rb") }
 

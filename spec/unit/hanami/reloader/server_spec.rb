@@ -50,7 +50,10 @@ RSpec.describe Hanami::Reloader::Server do
     app = rack_server.options[:app]
 
     expect(app).to be_a(Hanami::Reloader::Middleware)
-    expect(app.call({})).to eq([200, {}, ["from config.ru"]])
+
+    status, _headers, body = app.call({})
+    expect(status).to eq(200)
+    expect(read(body)).to eq("from config.ru")
   end
 
   it "reads the config file given by the config option" do
@@ -60,7 +63,8 @@ RSpec.describe Hanami::Reloader::Server do
 
     Dir.chdir(dir) { server.call(config: "custom.ru") }
 
-    expect(rack_server.options[:app].call({})).to eq([200, {}, ["from custom.ru"]])
+    _status, _headers, body = rack_server.options[:app].call({})
+    expect(read(body)).to eq("from custom.ru")
   end
 
   context "when the app has code reloading disabled" do

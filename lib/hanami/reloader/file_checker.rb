@@ -43,21 +43,30 @@ module Hanami
         @root = Pathname(root)
         @glob = File.join("**", "*.{#{WATCHED_EXTENSIONS.join(",")}}")
         @signature = reloadable_signature
+        @seen = @signature
+        @failed = nil
         @restart_mtimes = restart_required_mtimes
       end
 
-      # Returns true if any reloadable file has changed since the last {#commit!}.
+      # Returns true if any reloadable file has changed since the last {#commit!}, and that change
+      # has not already been reported to {#failed!}.
       #
-      # This deliberately does not record what it saw. Until {#commit!} is called the change is
-      # still considered outstanding, so a reload that raises will be attempted again on the next
-      # check rather than being swallowed.
+      # This deliberately does not record what it saw as the new baseline. Until {#commit!} is
+      # called the change is still considered outstanding, so a reload that raises is never taken
+      # as having been applied.
       #
       # @return [Boolean]
       #
       # @api private
       # @since 3.1.0
       def updated?
-        reloadable_signature != @signature
+        @seen = reloadable_signature
+
+        # A failed reload leaves the app torn down, so once one has failed anything other than the
+        # state that failed needs a reload, even the state that was last committed.
+        return @seen != @failed if @failed
+
+        @seen != @signature
       end
 
       # Accepts the current state of the files as the new baseline.
@@ -66,6 +75,20 @@ module Hanami
       # @since 3.1.0
       def commit!
         @signature = reloadable_signature
+        @failed = nil
+        self
+      end
+
+      # Records that reloading the files seen by the last {#updated?} did not succeed.
+      #
+      # Nothing is committed: the change stays outstanding, so saving a fix is still picked up.
+      # What this does stop is {#updated?} reporting that same state again, which would otherwise
+      # have every request re-run a reload already known to raise.
+      #
+      # @api private
+      # @since 3.1.0
+      def failed!
+        @failed = @seen
         self
       end
 
