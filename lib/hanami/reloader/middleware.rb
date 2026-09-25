@@ -156,7 +156,7 @@ module Hanami
       def reload!
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        slice.reload!
+        slice.reload
 
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         @out.puts("[hanami] Reloaded in #{(elapsed * 1000).round}ms")
