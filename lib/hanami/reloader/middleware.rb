@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "concurrent/atomic/read_write_lock"
 require "rack/body_proxy"
 
 module Hanami
@@ -28,15 +27,23 @@ module Hanami
       # the page still describes the reload rather than this line.
       RERAISE = ->(env) { raise env.fetch(RELOAD_ERROR) }
 
-      def initialize(app, file_checker:, slice: nil, out: $stdout)
+      # Seconds a reload waits for open responses to finish before it is put off.
+      #
+      # Ordinary responses close within milliseconds, so this only runs out when a response is
+      # held open, such as a streamed one.
+      RELOAD_WAIT = 1
+
+      def initialize(app, file_checker:, slice: nil, out: $stdout, reload_wait: RELOAD_WAIT)
         @app = app
         @file_checker = file_checker
         @slice = slice
         @out = out
         @check_mutex = Mutex.new
-        @lock = Concurrent::ReadWriteLock.new
+        @lock = ReadWriteLock.new
         @reload_error = nil
         @error_app = nil
+        @reload_wait = reload_wait
+        @reload_deferred = false
       end
 
       def call(env)
@@ -63,12 +70,24 @@ module Hanami
 
       # Reloads the slice, and records whether the reload failed so requests can act on it.
       #
+      # If open responses do not finish within the reload wait, the reload is put off and the
+      # request is served with the current code. The change stays outstanding, so a later request
+      # reloads it once those responses have closed.
+      #
       # Must not be called while this thread holds a read lock. The write lock waits for every
-      # reader, including this thread, so it would wait forever.
+      # reader, including this thread, so the reload would always be put off.
       def reload_slice
-        # Reload under the write lock, so no request runs in the app while it is torn down, and a
-        # waiting request sees a possible failure as soon as it gets the read lock.
-        @lock.with_write_lock do
+        # If the last reload was put off (because a response stayed open past the reload wait),
+        # don't wait again. That response may stay open for a long time, and waiting for it on
+        # every request would slow each one by the full reload wait. Instead, reload only if no
+        # responses are open right now.
+        wait = @reload_deferred ? 0 : @reload_wait
+
+        # Reload under the write lock, so no request runs in the app while it is torn down.
+        #
+        # Record the result while under the lock too. A request that is waiting for this reload to
+        # finish must be able to see whether it failed as soon as it gets the read lock.
+        reloaded = @lock.with_write_lock(timeout: wait) do
           reload
           @reload_error = nil
           @file_checker.commit!
@@ -80,6 +99,13 @@ module Hanami
           @reload_error = exception
           @error_app ||= build_error_app
           @file_checker.failed!
+        end
+
+        if reloaded
+          @reload_deferred = false
+        elsif !@reload_deferred
+          @reload_deferred = true
+          warn_reload_deferred
         end
       end
 
@@ -161,6 +187,16 @@ module Hanami
 
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
         @out.puts("[hanami] Reloaded in #{(elapsed * 1000).round}ms")
+      end
+
+      def warn_reload_deferred
+        open = @lock.readers
+        responses = open == 1 ? "1 open response" : "#{open} open responses"
+
+        @out.puts(
+          "[hanami] Waiting for #{responses} to finish before reloading. " \
+          "Until then, requests are served with the current code."
+        )
       end
 
       def warn_restart_required(paths)

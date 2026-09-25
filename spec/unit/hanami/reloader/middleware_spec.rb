@@ -301,6 +301,69 @@ RSpec.describe Hanami::Reloader::Middleware do
       expect(reloaded.size).to eq(1)
     end
 
+    context "when an open response outlasts the reload wait" do
+      subject(:middleware) do
+        described_class.new(
+          inner, file_checker: file_checker, slice: slice, out: out, reload_wait: 0.1
+        )
+      end
+
+      # Left open, as a streamed response would be.
+      let!(:open_body) { middleware.call(env)[2] }
+
+      before { allow(file_checker).to receive(:updated?).and_return(true) }
+
+      it "puts the reload off and serves the request with the current code" do
+        expect(slice).not_to receive(:reload)
+        expect(file_checker).not_to receive(:commit!)
+
+        status, _headers, body = middleware.call(env)
+
+        expect(status).to eq(200)
+        expect(read(body)).to eq("ok")
+      end
+
+      it "says why the change has not been applied" do
+        read(middleware.call(env)[2])
+
+        expect(out.string).to include("[hanami] Waiting for 1 open response to finish before reloading")
+      end
+
+      it "does not wait or warn again on later requests while the response is still open" do
+        read(middleware.call(env)[2])
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        read(middleware.call(env)[2])
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+        expect(elapsed).to be < 0.05
+        expect(out.string.scan("Waiting for").length).to eq(1)
+      end
+
+      it "reloads on the next request once the response has closed" do
+        read(middleware.call(env)[2])
+
+        open_body.close
+        expect(slice).to receive(:reload)
+
+        read(middleware.call(env)[2])
+      end
+
+      it "waits again the next time a reload is put off" do
+        read(middleware.call(env)[2])
+        open_body.close
+        read(middleware.call(env)[2])
+
+        # A new change, with a new response held open.
+        _, _, another_open_body = middleware.call(env)
+        read(middleware.call(env)[2])
+
+        expect(out.string.scan("Waiting for").length).to eq(2)
+      ensure
+        another_open_body&.close
+      end
+    end
+
     it "releases the read lock when the app raises" do
       calls = 0
       app = described_class.new(
@@ -316,7 +379,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       expect { app.call(env) }.to raise_error("boom")
 
       # The lock would still be held if the failed dispatch had not released it, and this reload
-      # would block forever.
+      # would be put off.
       allow(file_checker).to receive(:updated?).and_return(true)
       expect(slice).to receive(:reload)
 

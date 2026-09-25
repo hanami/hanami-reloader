@@ -12,6 +12,7 @@ and this project adheres to [Break Versioning](https://www.taoensso.com/break-ve
 - Reload the app's code in place instead of restarting the server. `hanami server` now wraps the app in a Rack middleware that checks the app's source files once per request and reloads via `Hanami::Slice#reload` before dispatching, so the process stays up and requests are served from freshly loaded code. (@afomera in #37)
 - Render errors raised while reloading on the hanami-webconsole error page, where hanami-webconsole is bundled and `config.render_detailed_errors` is enabled, instead of returning a bare 500. (@afomera in #37)
 - Warn, instead of silently doing nothing, when a changed file cannot be applied by a reload (`config/app.rb`, `Gemfile`, `Gemfile.lock`). (@afomera in #37)
+- Put off a reload while a response is held open (such as a streamed response), and serve requests with the current code until it closes, instead of making every request wait for it. (@afomera in #37)
 
 ### Changed
 
