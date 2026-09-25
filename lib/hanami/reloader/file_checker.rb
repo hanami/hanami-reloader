@@ -69,12 +69,15 @@ module Hanami
         @seen != @signature
       end
 
-      # Accepts the current state of the files as the new baseline.
+      # Accepts the files seen by the last {#updated?} as the new baseline.
+      #
+      # The files are not checked again here. A file saved while the reload was running may not
+      # have been loaded, so it must stay outstanding for the next {#updated?} to report.
       #
       # @api private
       # @since 3.1.0
       def commit!
-        @signature = reloadable_signature
+        @signature = @seen
         @failed = nil
         self
       end

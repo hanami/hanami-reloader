@@ -104,6 +104,20 @@ RSpec.describe Hanami::Reloader::FileChecker do
     end
   end
 
+  describe "#commit!" do
+    it "keeps reporting a change made after the last check, since the reload may have missed it" do
+      file_checker
+      touch("app/greeter.rb", offset: 10)
+      file_checker.updated?
+
+      # Saved while the reload is running, between the check and the commit.
+      touch("app/greeter.rb", offset: 20)
+      file_checker.commit!
+
+      expect(file_checker.updated?).to be(true)
+    end
+  end
+
   describe "#failed!" do
     it "stops reporting the change that failed, so it is not retried on every request" do
       file_checker
