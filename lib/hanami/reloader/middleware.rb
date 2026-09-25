@@ -16,12 +16,8 @@ module Hanami
     # happens when there is something to serve, and never lands halfway through an edit.
     #
     # @api private
-    # @since 3.1.0
     class Middleware
       # Rack env key carrying a failed reload's exception to {RERAISE}.
-      #
-      # @api private
-      # @since 3.1.0
       RELOAD_ERROR = "hanami.reloader.reload_error"
 
       # The app underneath the reloader's own webconsole middleware.
@@ -30,13 +26,8 @@ module Hanami
       # request arrived. Raising it again here is what puts it back underneath webconsole. Ruby
       # leaves the backtrace of an exception that already has one alone when it is re-raised, so
       # the page still describes the reload rather than this line.
-      #
-      # @api private
-      # @since 3.1.0
       RERAISE = ->(env) { raise env.fetch(RELOAD_ERROR) }
 
-      # @api private
-      # @since 3.1.0
       def initialize(app, file_checker:, slice: nil, out: $stdout)
         @app = app
         @file_checker = file_checker
@@ -48,8 +39,6 @@ module Hanami
         @error_app = nil
       end
 
-      # @api private
-      # @since 3.1.0
       def call(env)
         # While a reload is failing, console requests are the rendered error page asking for more
         # detail about the very error being shown. Checking for changes first would retry a reload
@@ -65,8 +54,6 @@ module Hanami
 
       private
 
-      # @api private
-      # @since 3.1.0
       def reload_if_needed
         # `FileChecker` is not thread-safe, and `restart_required` reports each change once, so it
         # must be consulted on every request and by one thread at a time.
@@ -81,8 +68,6 @@ module Hanami
       # Must run before this thread takes a read lock: acquiring the write lock while already
       # holding a read lock on the same `Concurrent::ReadWriteLock` deadlocks.
       #
-      # @api private
-      # @since 3.1.0
       def reload_slice
         # Exclusive: a reload tears the app down, so nothing may be dispatching through it.
         @lock.with_write_lock { reload! }
@@ -106,8 +91,6 @@ module Hanami
       # Dispatches under a shared lock, so requests run concurrently with each other but never
       # alongside a reload.
       #
-      # @api private
-      # @since 3.1.0
       def dispatch(env)
         @lock.acquire_read_lock
         held = true
@@ -128,9 +111,6 @@ module Hanami
       end
 
       # Renders the failed reload, so it is presented like any other error in development.
-      #
-      # @api private
-      # @since 3.1.0
       def render_reload_error(env)
         error = @reload_error
 
@@ -142,8 +122,6 @@ module Hanami
         @error_app.call(env)
       end
 
-      # @api private
-      # @since 3.1.0
       def console_request?(env)
         return false unless @error_app
 
@@ -158,9 +136,6 @@ module Hanami
       # instance's registry, over later requests.
       #
       # @return [#call, nil] nil when webconsole cannot render the error
-      #
-      # @api private
-      # @since 3.1.0
       def build_error_app
         return nil unless render_detailed_errors?
 
@@ -174,15 +149,10 @@ module Hanami
 
       # Gated exactly as Hanami gates webconsole in the app's own middleware stack, so the
       # reloader never shows a detailed error page where the app would not have.
-      #
-      # @api private
-      # @since 3.1.0
       def render_detailed_errors?
         Hanami.bundled?("hanami-webconsole") && slice.config.render_detailed_errors
       end
 
-      # @api private
-      # @since 3.1.0
       def reload!
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -192,8 +162,6 @@ module Hanami
         @out.puts("[hanami] Reloaded in #{(elapsed * 1000).round}ms")
       end
 
-      # @api private
-      # @since 3.1.0
       def warn_restart_required(paths)
         @out.puts(
           "[hanami] #{paths.join(', ')} cannot be reloaded. " \
@@ -202,9 +170,6 @@ module Hanami
       end
 
       # Resolved lazily: the middleware is built while the app is being loaded.
-      #
-      # @api private
-      # @since 3.1.0
       def slice
         @slice || Hanami.app
       end
