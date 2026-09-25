@@ -343,5 +343,41 @@ RSpec.describe Hanami::Reloader::Middleware do
 
       expect(reloads).to eq(1)
     end
+
+    it "does not dispatch a request into an app whose reload failed after it checked for changes" do
+      changed = false
+      allow(file_checker).to receive(:updated?) { changed }
+      allow(slice).to receive(:reload).and_raise(SyntaxError, "unexpected end")
+
+      # Hold the first request after it has checked for changes, just before it dispatches.
+      checked = Queue.new
+      resume = Queue.new
+      paused = false
+      allow(middleware).to receive(:dispatch).and_wrap_original do |original, *args|
+        unless paused
+          paused = true
+          checked << true
+          resume.pop
+        end
+
+        original.call(*args)
+      end
+
+      expect(inner).not_to receive(:call)
+
+      first = Thread.new do
+        Thread.current.report_on_exception = false
+        middleware.call(env)
+      end
+      checked.pop
+
+      # A change lands, and a second request reloads it and fails, while the first request is
+      # still on its way to dispatch.
+      changed = true
+      expect { middleware.call(env) }.to raise_error(SyntaxError)
+
+      resume << true
+      expect { first.value }.to raise_error(SyntaxError, "unexpected end")
+    end
   end
 end

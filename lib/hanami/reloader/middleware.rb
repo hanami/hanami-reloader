@@ -45,10 +45,6 @@ module Hanami
         # already known to raise, for a request that is not going to reach the app either way.
         reload_if_needed unless @reload_error && console_request?(env)
 
-        # Never dispatch after a failed reload: `reload` unloads before it prepares, so what is
-        # left behind is a half-built app whose own errors would only obscure the real one.
-        return render_reload_error(env) if @reload_error
-
         dispatch(env)
       end
 
@@ -65,37 +61,44 @@ module Hanami
         end
       end
 
-      # Must run before this thread takes a read lock: acquiring the write lock while already
-      # holding a read lock on the same `Concurrent::ReadWriteLock` deadlocks.
+      # Reloads the slice, and records whether the reload failed so requests can act on it.
       #
+      # Must not be called while this thread holds a read lock. The write lock waits for every
+      # reader, including this thread, so it would wait forever.
       def reload_slice
-        # Exclusive: a reload tears the app down, so nothing may be dispatching through it.
-        @lock.with_write_lock { reload }
+        # Reload under the write lock, so no request runs in the app while it is torn down, and a
+        # waiting request sees a possible failure as soon as it gets the read lock.
+        @lock.with_write_lock do
+          reload
+          @reload_error = nil
+          @file_checker.commit!
+        rescue StandardError, ScriptError => exception
+          # Include `ScriptError` (covering `SyntaxError` and `LoadError`) as a likely error to come
+          # from a reload. Ignore anything broader (such as `Interrupt` or `NoMemoryError`), as
+          # unlikely to be an app code concern.
 
-        @reload_error = nil
-
-        # Only once the reload has succeeded, so a file that raises is never recorded as applied.
-        @file_checker.commit!
-      rescue StandardError, ScriptError => exception
-        # `ScriptError` covers `SyntaxError`, the likeliest thing to come out of a reload, and
-        # `LoadError`. Anything broader (`Interrupt`, `NoMemoryError`) is not the app's to render.
-        @reload_error = exception
-        @error_app ||= build_error_app
-
-        # Still uncommitted, so the change is outstanding and the fixed file will be picked up.
-        # All this stops is *this* state being retried, which would otherwise re-run a reload
-        # known to raise on every request, including the error page's own.
-        @file_checker.failed!
+          @reload_error = exception
+          @error_app ||= build_error_app
+          @file_checker.failed!
+        end
       end
 
-      # Dispatches under a shared lock, so requests run concurrently with each other but never
-      # alongside a reload.
+      # Dispatches the request to the app, or renders the error if the last reload failed.
       #
+      # Holds a read lock until the response body is closed. Requests can run at the same time as
+      # each other, but never at the same time as a reload.
       def dispatch(env)
         @lock.acquire_read_lock
         held = true
 
         begin
+          # Never dispatch after a failed reload, which unloads before it prepares, leaving us a
+          # half-built app whose own errors would only obscure the real one.
+          #
+          # Check this after taking the lock, not before: if a reload was running when this request
+          # arrived, the request has now waited for it to finish, so it can see whether it failed.
+          return render_reload_error(env, @reload_error) if @reload_error
+
           status, headers, body = @app.call(env)
 
           # Rack bodies can be lazy, so returning from `call` does not mean the response has been
@@ -111,9 +114,7 @@ module Hanami
       end
 
       # Renders the failed reload, so it is presented like any other error in development.
-      def render_reload_error(env)
-        error = @reload_error
-
+      def render_reload_error(env, error)
         # Nothing here can render it, so do what the reloader has always done and let it reach
         # the server.
         raise error unless @error_app
