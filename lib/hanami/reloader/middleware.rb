@@ -45,7 +45,7 @@ module Hanami
         # already known to raise, for a request that is not going to reach the app either way.
         reload_if_needed unless @reload_error && console_request?(env)
 
-        # Never dispatch after a failed reload: `reload!` unloads before it prepares, so what is
+        # Never dispatch after a failed reload: `reload` unloads before it prepares, so what is
         # left behind is a half-built app whose own errors would only obscure the real one.
         return render_reload_error(env) if @reload_error
 
@@ -70,7 +70,7 @@ module Hanami
       #
       def reload_slice
         # Exclusive: a reload tears the app down, so nothing may be dispatching through it.
-        @lock.with_write_lock { reload! }
+        @lock.with_write_lock { reload }
 
         @reload_error = nil
 
@@ -153,7 +153,7 @@ module Hanami
         Hanami.bundled?("hanami-webconsole") && slice.config.render_detailed_errors
       end
 
-      def reload!
+      def reload
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         slice.reload

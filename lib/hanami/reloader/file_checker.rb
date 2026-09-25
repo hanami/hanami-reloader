@@ -13,7 +13,7 @@ module Hanami
     # @api private
     # @since 3.1.0
     class FileChecker
-      # Directories whose contents {Hanami::Slice#reload!} is able to pick up.
+      # Directories whose contents {Hanami::Slice#reload} is able to pick up.
       #
       # @api private
       # @since 3.1.0

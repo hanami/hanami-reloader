@@ -9,8 +9,8 @@ RSpec.describe Hanami::Reloader::Middleware do
   let(:out) { StringIO.new }
   let(:env) { {"PATH_INFO" => "/"} }
 
-  # Stands in for a slice class (e.g. `Hanami.app`), which responds to `reload!` and `config`.
-  let(:slice) { double("slice", reload!: true, config: config) }
+  # Stands in for a slice class (e.g. `Hanami.app`), which responds to `reload` and `config`.
+  let(:slice) { double("slice", reload: true, config: config) }
   let(:config) { double("config", render_detailed_errors: true) }
 
   let(:file_checker) do
@@ -36,7 +36,7 @@ RSpec.describe Hanami::Reloader::Middleware do
 
   context "when nothing has changed" do
     it "does not reload" do
-      expect(slice).not_to receive(:reload!)
+      expect(slice).not_to receive(:reload)
 
       middleware.call(env)
     end
@@ -47,7 +47,7 @@ RSpec.describe Hanami::Reloader::Middleware do
 
     it "reloads before dispatching" do
       order = []
-      allow(slice).to receive(:reload!) { order << :reload }
+      allow(slice).to receive(:reload) { order << :reload }
       app = described_class.new(
         ->(_env) { order << :dispatch; [200, {}, ["ok"]] },
         file_checker: file_checker, slice: slice, out: out
@@ -71,7 +71,7 @@ RSpec.describe Hanami::Reloader::Middleware do
     end
 
     context "and the reload raises" do
-      before { allow(slice).to receive(:reload!).and_raise(SyntaxError, "unexpected end") }
+      before { allow(slice).to receive(:reload).and_raise(SyntaxError, "unexpected end") }
 
       it "lets the error surface" do
         expect { middleware.call(env) }.to raise_error(SyntaxError)
@@ -127,7 +127,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       end.new
     end
 
-    before { allow(slice).to receive(:reload!).and_raise(SyntaxError, "unexpected end") }
+    before { allow(slice).to receive(:reload).and_raise(SyntaxError, "unexpected end") }
 
     context "when webconsole is not available" do
       it "re-raises, as the reloader has always done" do
@@ -190,7 +190,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       it "keeps rendering it while the file is unchanged, without retrying the reload" do
         middleware.call(env)
 
-        expect(slice).to receive(:reload!).never
+        expect(slice).to receive(:reload).never
 
         status, _headers, body = middleware.call(env)
 
@@ -201,7 +201,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       it "retries once the file changes again, and serves the app when the reload succeeds" do
         middleware.call(env)
 
-        allow(slice).to receive(:reload!).and_return(true)
+        allow(slice).to receive(:reload).and_return(true)
         file_checker.touch!
 
         status, _headers, body = middleware.call(env)
@@ -232,7 +232,7 @@ RSpec.describe Hanami::Reloader::Middleware do
           middleware.call(env)
           checks = file_checker.checks
 
-          expect(slice).to receive(:reload!).never
+          expect(slice).to receive(:reload).never
 
           middleware.call(console_env)
 
@@ -288,7 +288,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       # Now a change lands, and a second request arrives wanting to reload.
       reloaded = Queue.new
       allow(file_checker).to receive(:updated?).and_return(true)
-      allow(slice).to receive(:reload!) { reloaded << :reloaded }
+      allow(slice).to receive(:reload) { reloaded << :reloaded }
 
       second = Thread.new { read(middleware.call(env)[2]) }
 
@@ -318,7 +318,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       # The lock would still be held if the failed dispatch had not released it, and this reload
       # would block forever.
       allow(file_checker).to receive(:updated?).and_return(true)
-      expect(slice).to receive(:reload!)
+      expect(slice).to receive(:reload)
 
       read(app.call(env)[2])
     end
@@ -332,7 +332,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       committed = false
       mutex = Mutex.new
 
-      allow(slice).to receive(:reload!) { mutex.synchronize { reloads += 1 } }
+      allow(slice).to receive(:reload) { mutex.synchronize { reloads += 1 } }
 
       # Stands in for a real checker: the change stays outstanding until it is committed.
       allow(file_checker).to receive(:updated?) { !committed }
