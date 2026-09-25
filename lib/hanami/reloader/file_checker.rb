@@ -118,7 +118,7 @@ module Hanami
         paths = WATCHED_DIRS.flat_map { |dir| Dir.glob(root.join(dir, @glob)) }
 
         # `config/app.rb` sits inside a watched directory but cannot be applied by a reload, so it
-        # is excluded here and reported by {#restart_required?} instead. Otherwise every edit to it
+        # is excluded here and reported by {#restart_required} instead. Otherwise every edit to it
         # would both warn and trigger a reload that changes nothing.
         signature(paths - restart_required_paths)
       end
@@ -137,22 +137,22 @@ module Hanami
         end
       end
 
-      # A file count alongside the newest mtime. Between them these catch the three things that
-      # matter: a file changing (mtime moves), one being added, and one being deleted (count
-      # moves). Comparing counts avoids having to keep a hash of every path.
+      # A hash of every file's path and mtime. A change to any file gives a different hash: a file
+      # being edited, added, deleted or renamed, and even an mtime moving backwards (such as a file
+      # restored from a backup).
+      #
+      # Only the hash is kept between requests, so memory does not grow with the app.
+      #
+      # `Dir.glob` returns paths sorted, so the same files always give the same hash.
       def signature(paths)
-        count = 0
-        latest = 0.0
-
-        paths.each do |path|
-          mtime = File.mtime(path).to_f
-          count += 1
-          latest = mtime if mtime > latest
+        entries = paths.filter_map do |path|
+          [path, File.mtime(path).to_f]
         rescue Errno::ENOENT
           # Deleted between the glob and the stat; the next check will see a stable state.
+          nil
         end
 
-        [count, latest]
+        entries.hash
       end
     end
   end

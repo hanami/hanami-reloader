@@ -54,6 +54,24 @@ RSpec.describe Hanami::Reloader::FileChecker do
       expect(file_checker.updated?).to be(true)
     end
 
+    it "is true when a watched file is renamed" do
+      file_checker
+      FileUtils.mv(dir.join("app/greeter.rb"), dir.join("app/welcomer.rb"))
+
+      expect(file_checker.updated?).to be(true)
+    end
+
+    it "is true when a watched file's mtime moves backwards" do
+      write("app/farewell.rb")
+      touch("app/farewell.rb", offset: 10)
+      file_checker
+
+      # Older than the newest file, such as a file restored from a backup.
+      touch("app/greeter.rb", offset: -100)
+
+      expect(file_checker.updated?).to be(true)
+    end
+
     it "watches config, lib and slices as well as app" do
       %w[config/routes.rb lib/thing.rb slices/main/action.rb].each do |path|
         w = described_class.new(root: dir)
