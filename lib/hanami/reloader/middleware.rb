@@ -97,8 +97,8 @@ module Hanami
           # unlikely to be an app code concern.
 
           @reload_error = exception
+          @file_checker.failed! # Before building the error app, in case that raises.
           @error_app ||= build_error_app
-          @file_checker.failed!
         end
 
         if reloaded
@@ -162,6 +162,10 @@ module Hanami
       # process, because the console on the page it renders addresses error pages by id in that
       # instance's registry, over later requests.
       #
+      # If building the error app raises, that error is logged and nil is returned. The actual
+      # reload error is what the developer needs to see, and it will still reach the server without
+      # an error app.
+      #
       # @return [#call, nil] nil when webconsole cannot render the error
       def build_error_app
         return nil unless render_detailed_errors?
@@ -171,6 +175,12 @@ module Hanami
 
         Hanami::Webconsole::Middleware.new(RERAISE, slice.config)
       rescue LoadError
+        nil
+      rescue StandardError => exception
+        @out.puts(
+          "[hanami] Could not render the reload error with hanami-webconsole " \
+          "(#{exception.class}: #{exception.message})"
+        )
         nil
       end
 

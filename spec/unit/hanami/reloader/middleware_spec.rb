@@ -216,6 +216,33 @@ RSpec.describe Hanami::Reloader::Middleware do
         expect { middleware.call(env) }.to raise_error(SyntaxError)
       end
 
+      context "when webconsole raises while it is being built" do
+        before do
+          allow(webconsole_class).to receive(:new).and_raise(RuntimeError, "webconsole broke")
+        end
+
+        it "lets the reload error reach the server, not the webconsole error" do
+          expect { middleware.call(env) }.to raise_error(SyntaxError, "unexpected end")
+        end
+
+        it "logs why the error could not be rendered" do
+          expect { middleware.call(env) }.to raise_error(SyntaxError)
+
+          expect(out.string).to include(
+            "[hanami] Could not render the reload error with hanami-webconsole " \
+            "(RuntimeError: webconsole broke)"
+          )
+        end
+
+        it "does not retry the reload while the file is unchanged" do
+          expect { middleware.call(env) }.to raise_error(SyntaxError)
+
+          expect(slice).to receive(:reload).never
+
+          expect { middleware.call(env) }.to raise_error(SyntaxError)
+        end
+      end
+
       describe "console requests" do
         let(:console_env) { {"PATH_INFO" => "/_hanami/webconsole/0-abc/eval"} }
 
