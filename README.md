@@ -2,7 +2,7 @@
 
 [actions]: https://github.com/hanami/hanami-reloader/actions
 [chat]: https://discord.gg/naQApPAsZB
-[forum]: https://discourse.hanamirb.org
+[forum]: https://discourse.hanakai.org
 [rubygem]: https://rubygems.org/gems/hanami-reloader
 
 # Hanami Reloader [![Gem Version](https://badge.fury.io/rb/hanami-reloader.svg)][rubygem] [![CI Status](https://github.com/hanami/hanami-reloader/workflows/CI/badge.svg)][actions]
