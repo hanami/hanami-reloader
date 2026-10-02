@@ -5,69 +5,45 @@ require "hanami/port"
 module Hanami
   module Reloader
     module Commands
-      # Guardfile
-      module Guardfile
-        def self.group
-          "server"
-        end
-
-        def self.default_path
-          path("Guardfile")
-        end
-
-        def self.path(value)
-          value
-        end
-      end
-
-      # Generate hanami-reloader configuration
+      # Removes configuration left behind by previous versions of hanami-reloader.
+      #
+      # Reloading no longer runs through Guard, so the `Guardfile` it used to generate is now
+      # dead weight. Nothing is generated in its place: the reloader is wired up by the `server`
+      # command below, with no per-app configuration.
+      #
+      # @api private
+      # @since 2.1.0
       class Install < Hanami::CLI::Command
         # @api private
-        # @since 2.1.0
-        #
-        # NOTE: Any change to this constant MUST be reflected in the `#generate_configuration` method,
-        #       by copying and pasting this regex.
-        MATCHER = %r{^(app|config|lib|slices)([\\/][^\\/]+)*\.(rb|erb|haml|slim)$}i
+        # @since 3.1.0
+        GUARDFILE = "Guardfile"
 
-        desc "Generate configuration for code reloading"
+        desc "Remove obsolete code reloading configuration"
 
         def initialize(fs: Dry::Files.new, **args)
           super
         end
 
         def call(*, **)
-          generate_configuration(Guardfile.default_path)
-        end
+          return unless fs.exist?(GUARDFILE)
+          return unless fs.read(GUARDFILE).include?("guard \"puma\"")
 
-        private
-
-        def generate_configuration(path)
-          fs.write path, <<~CODE
-            # frozen_string_literal: true
-
-            group :#{Guardfile.group} do
-              guard "puma", port: ENV.fetch("#{Hanami::Port::ENV_VAR}", #{Hanami::Port::DEFAULT}), environment: ENV.fetch("HANAMI_ENV", "development") do
-                # Edit the following regular expression for your needs.
-                # See: https://hanakai.org/learn/hanami/app/code-reloading/
-                watch(%r{^(app|config|lib|slices)([\\/][^\\/]+)*.(rb|erb|haml|slim)$}i)
-              end
-            end
-          CODE
+          fs.delete(GUARDFILE)
+          out.puts "Removed #{GUARDFILE} (code reloading no longer uses Guard)"
         end
       end
 
-      # Override `hanami server` command
+      # Override `hanami server` to reload the app in place instead of restarting it.
+      #
+      # The app is built from `config.ru` here rather than by the Rack server, so that it can be
+      # wrapped in {Middleware} before being served. That keeps the reloader outside the app's own
+      # middleware stack, which a reload replaces, and means an app needs no `config.ru` changes to
+      # get reloading.
+      #
+      # @since 2.0.0
+      # @api private
       class Server < Hanami::CLI::Commands::App::Server
-        # @since 2.0.0
-        # @api private
-        DEFAULT_GUARD_PUMA_OPTIONS = ["-n", "f", "-i", "-g", Guardfile.group, "-G"].freeze
-
-        # @since 2.0.0
-        # @api private
-        OPTIONS_SEPARATOR = " "
-
-        option :guardfile,      type: :string,  desc: "Path to Guardfile", default: Guardfile.default_path.to_s
-        option :code_reloading, type: :boolean, desc: "Code reloading",    default: true
+        option :code_reloading, type: :boolean, desc: "Code reloading", default: true
 
         desc "Start Hanami app server"
 
@@ -75,11 +51,25 @@ module Hanami
           "--no-code-reloading # Disable code reloading"
         ]
 
-        def call(**args)
-          code_reloading = args.fetch(:code_reloading)
+        def call(port: Hanami::Port::DEFAULT, **args)
+          return super(port: port, **args) unless code_reloading?(**args)
+
+          # Keeps HANAMI_PORT in step with an explicit `--port`, then resolves the port the same
+          # way the command we're replacing does, so a port set in `.env` is still honoured.
+          Hanami::Port.call!(port)
+
+          reloading_server.call(**args, port: Hanami::Port[port])
+        end
+
+        private
+
+        # @api private
+        # @since 3.1.0
+        def code_reloading?(**args)
+          return false unless args.fetch(:code_reloading)
 
           if ENV["HANAMI_ENV"] == "production"
-            msg = <<~TEXT
+            err.puts <<~TEXT
               WARNING: You are running `hanami server` in the production environment via hanami-reloader.
 
               Code reloading is disabled, but `hanami server` and hanami-reloader are intended to be used in
@@ -88,29 +78,16 @@ module Hanami
               For production, start your web server directly, e.g. `bundle exec puma -C config/puma.rb`.
             TEXT
 
-            err.puts msg
-
-            return super
+            return false
           end
 
-          if code_reloading
-            guard_puma_env_vars!(**args)
-            exec "bundle exec guard #{guard_puma_options(**args)}"
-          else
-            super
-          end
+          true
         end
 
-        private
-
-        def guard_puma_env_vars!(**args)
-          Hanami::Port.call!(args.fetch(:port))
-        end
-
-        def guard_puma_options(**args)
-          options = DEFAULT_GUARD_PUMA_OPTIONS.dup
-          options.push(Guardfile.path(args.fetch(:guardfile)))
-          options.join(OPTIONS_SEPARATOR)
+        # @api private
+        # @since 3.1.0
+        def reloading_server
+          Reloader::Server.new(out: out, err: err)
         end
       end
     end

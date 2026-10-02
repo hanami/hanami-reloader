@@ -30,9 +30,8 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = ">= 3.3"
 
-  spec.add_runtime_dependency "guard", "~> 2.19"
-  spec.add_runtime_dependency "guard-puma", "~> 0.8"
   spec.add_runtime_dependency "hanami-cli", "~> 3.0.0"
+  spec.add_runtime_dependency "rack", ">= 3.0"
   spec.add_runtime_dependency "zeitwerk", "~> 2.6"
 end
 
