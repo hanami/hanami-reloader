@@ -9,7 +9,6 @@ gemspec:
   summary: "Code reloading for Hanami"
   homepage: "https://hanamirb.org"
   runtime_dependencies:
-    - ["guard", "~> 2.19"]
-    - ["guard-puma", "~> 0.8"]
     - ["hanami-cli", "~> 3.0.0"]
+    - ["rack", ">= 3.0"]
     - ["zeitwerk", "~> 2.6"]
