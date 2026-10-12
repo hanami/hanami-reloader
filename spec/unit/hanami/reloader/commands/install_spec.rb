@@ -4,7 +4,7 @@ require "tmpdir"
 
 RSpec.describe Hanami::Reloader::Commands::Install do
   describe "#call" do
-    subject { described_class.new(fs: fs, out: out) }
+    subject { described_class.new(fs: fs, stdout: out) }
 
     let(:fs) { Dry::Files.new }
     let(:out) { StringIO.new }

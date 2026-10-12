@@ -4,7 +4,7 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe Hanami::Reloader::Commands::Server do
-  subject(:command) { described_class.new(server: server, out: out, err: err) }
+  subject(:command) { described_class.new(server: server, stdout: out, stderr: err) }
 
   let(:captured) { {} }
   let(:server) do
