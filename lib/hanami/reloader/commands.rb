@@ -20,16 +20,12 @@ module Hanami
 
         desc "Remove obsolete code reloading configuration"
 
-        def initialize(fs: Dry::Files.new, **args)
-          super
-        end
-
         def call(*, **)
           return unless fs.exist?(GUARDFILE)
           return unless fs.read(GUARDFILE).include?("guard \"puma\"")
 
           fs.delete(GUARDFILE)
-          out.puts "Removed #{GUARDFILE} (code reloading no longer uses Guard)"
+          stdout.puts "Removed #{GUARDFILE} (code reloading no longer uses Guard)"
         end
       end
 
@@ -69,7 +65,7 @@ module Hanami
           return false unless args.fetch(:code_reloading)
 
           if ENV["HANAMI_ENV"] == "production"
-            err.puts <<~TEXT
+            stderr.puts <<~TEXT
               WARNING: You are running `hanami server` in the production environment via hanami-reloader.
 
               Code reloading is disabled, but `hanami server` and hanami-reloader are intended to be used in
@@ -87,7 +83,7 @@ module Hanami
         # @api private
         # @since 3.1.0
         def reloading_server
-          Reloader::Server.new(out: out, err: err)
+          Reloader::Server.new(out: stdout, err: stderr)
         end
       end
     end
