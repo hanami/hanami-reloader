@@ -21,10 +21,10 @@ module Hanami
     class Server < Hanami::CLI::Server
       # @api private
       # @since 3.1.0
-      def initialize(out: $stdout, err: $stderr, **opts)
+      def initialize(stdout: $stdout, stderr: $stderr, **opts)
         super(**opts)
-        @out = out
-        @err = err
+        @stdout = stdout
+        @stderr = stderr
       end
 
       # @api private
@@ -49,14 +49,14 @@ module Hanami
       # @since 3.1.0
       def wrap(app)
         unless Hanami.app.config.code_reloading
-          @err.puts(
+          @stderr.puts(
             "WARNING: `config.code_reloading` is false, so the app cannot be reloaded. " \
             "Starting without code reloading."
           )
           return app
         end
 
-        Middleware.new(app, file_checker: FileChecker.new(root: Hanami.app.root), out: @out)
+        Middleware.new(app, file_checker: FileChecker.new(root: Hanami.app.root), stdout: @stdout)
       end
     end
   end

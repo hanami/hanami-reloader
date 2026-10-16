@@ -2,11 +2,11 @@
 
 RSpec.describe Hanami::Reloader::Middleware do
   subject(:middleware) do
-    described_class.new(inner, file_checker: file_checker, slice: slice, out: out)
+    described_class.new(inner, file_checker:, slice:, stdout:)
   end
 
   let(:inner) { ->(_env) { [200, {}, ["ok"]] } }
-  let(:out) { StringIO.new }
+  let(:stdout) { StringIO.new }
   let(:env) { {"PATH_INFO" => "/"} }
 
   # Stands in for a slice class (e.g. `Hanami.app`), which responds to `reload` and `config`.
@@ -50,7 +50,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       allow(slice).to receive(:reload) { order << :reload }
       app = described_class.new(
         ->(_env) { order << :dispatch; [200, {}, ["ok"]] },
-        file_checker: file_checker, slice: slice, out: out
+        file_checker:, slice:, stdout:
       )
 
       app.call(env)
@@ -67,7 +67,7 @@ RSpec.describe Hanami::Reloader::Middleware do
     it "reports how long the reload took" do
       middleware.call(env)
 
-      expect(out.string).to match(/\[hanami\] Reloaded in \d+ms/)
+      expect(stdout.string).to match(/\[hanami\] Reloaded in \d+ms/)
     end
 
     context "and the reload raises" do
@@ -228,7 +228,7 @@ RSpec.describe Hanami::Reloader::Middleware do
         it "logs why the error could not be rendered" do
           expect { middleware.call(env) }.to raise_error(SyntaxError)
 
-          expect(out.string).to include(
+          expect(stdout.string).to include(
             "[hanami] Could not render the reload error with hanami-webconsole " \
             "(RuntimeError: webconsole broke)"
           )
@@ -283,8 +283,8 @@ RSpec.describe Hanami::Reloader::Middleware do
     it "warns instead of silently doing nothing" do
       middleware.call(env)
 
-      expect(out.string).to include("config/app.rb cannot be reloaded")
-      expect(out.string).to include("Restart the server")
+      expect(stdout.string).to include("config/app.rb cannot be reloaded")
+      expect(stdout.string).to include("Restart the server")
     end
 
     it "still serves the request" do
@@ -331,7 +331,7 @@ RSpec.describe Hanami::Reloader::Middleware do
     context "when an open response outlasts the reload wait" do
       subject(:middleware) do
         described_class.new(
-          inner, file_checker: file_checker, slice: slice, out: out, reload_wait: 0.1
+          inner, file_checker:, slice:, stdout:, reload_wait: 0.1
         )
       end
 
@@ -353,7 +353,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       it "says why the change has not been applied" do
         read(middleware.call(env)[2])
 
-        expect(out.string).to include("[hanami] Waiting for 1 open response to finish before reloading")
+        expect(stdout.string).to include("[hanami] Waiting for 1 open response to finish before reloading")
       end
 
       it "does not wait or warn again on later requests while the response is still open" do
@@ -364,7 +364,7 @@ RSpec.describe Hanami::Reloader::Middleware do
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
         expect(elapsed).to be < 0.05
-        expect(out.string.scan("Waiting for").length).to eq(1)
+        expect(stdout.string.scan("Waiting for").length).to eq(1)
       end
 
       it "reloads on the next request once the response has closed" do
@@ -385,7 +385,7 @@ RSpec.describe Hanami::Reloader::Middleware do
         _, _, another_open_body = middleware.call(env)
         read(middleware.call(env)[2])
 
-        expect(out.string.scan("Waiting for").length).to eq(2)
+        expect(stdout.string.scan("Waiting for").length).to eq(2)
       ensure
         another_open_body&.close
       end
@@ -400,7 +400,7 @@ RSpec.describe Hanami::Reloader::Middleware do
 
           [200, {}, ["ok"]]
         },
-        file_checker: file_checker, slice: slice, out: out
+        file_checker:, slice:, stdout:
       )
 
       expect { app.call(env) }.to raise_error("boom")
@@ -428,7 +428,7 @@ RSpec.describe Hanami::Reloader::Middleware do
       allow(file_checker).to receive(:updated?) { !committed }
       allow(file_checker).to receive(:commit!) { committed = true }
 
-      app = described_class.new(inner, file_checker: file_checker, slice: slice, out: out)
+      app = described_class.new(inner, file_checker:, slice:, stdout:)
       4.times.map { Thread.new { read(app.call(env)[2]) } }.each(&:join)
 
       expect(reloads).to eq(1)

@@ -4,7 +4,7 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe Hanami::Reloader::Server do
-  subject(:server) { described_class.new(rack_server: rack_server, out: out, err: err) }
+  subject(:server) { described_class.new(rack_server:, stdout:, stderr:) }
 
   let(:rack_server) do
     Class.new do
@@ -14,8 +14,8 @@ RSpec.describe Hanami::Reloader::Server do
     end.new
   end
 
-  let(:out) { StringIO.new }
-  let(:err) { StringIO.new }
+  let(:stdout) { StringIO.new }
+  let(:stderr) { StringIO.new }
   let(:dir) { Pathname(Dir.mktmpdir) }
 
   let(:code_reloading) { true }
@@ -73,7 +73,7 @@ RSpec.describe Hanami::Reloader::Server do
     it "warns and serves the app unwrapped" do
       call
 
-      expect(err.string).to include("`config.code_reloading` is false")
+      expect(stderr.string).to include("`config.code_reloading` is false")
       expect(rack_server.options[:app]).not_to be_a(Hanami::Reloader::Middleware)
       expect(rack_server.options[:app].call({})).to eq([200, {}, ["from config.ru"]])
     end
