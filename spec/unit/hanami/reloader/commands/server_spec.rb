@@ -4,14 +4,14 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe Hanami::Reloader::Commands::Server do
-  subject(:command) { described_class.new(server: server, stdout: out, stderr: err) }
+  subject(:command) { described_class.new(server:, stdout:, stderr:) }
 
   let(:captured) { {} }
   let(:server) do
     spy("server").tap { |s| allow(s).to receive(:call) { |**kwargs| captured.replace(kwargs) } }
   end
-  let(:out) { StringIO.new }
-  let(:err) { StringIO.new }
+  let(:stdout) { StringIO.new }
+  let(:stderr) { StringIO.new }
 
   let(:args) { {code_reloading: code_reloading, port: port} }
   let(:code_reloading) { true }
@@ -103,7 +103,7 @@ RSpec.describe Hanami::Reloader::Commands::Server do
       it "warns" do
         command.call(**args)
 
-        expect(err.string).to include(
+        expect(stderr.string).to include(
           "WARNING: You are running `hanami server` in the production environment via hanami-reloader."
         )
       end

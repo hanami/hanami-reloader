@@ -33,11 +33,11 @@ module Hanami
       # held open, such as a streamed one.
       RELOAD_WAIT = 1
 
-      def initialize(app, file_checker:, slice: nil, out: $stdout, reload_wait: RELOAD_WAIT)
+      def initialize(app, file_checker:, slice: nil, stdout: $stdout, reload_wait: RELOAD_WAIT)
         @app = app
         @file_checker = file_checker
         @slice = slice
-        @out = out
+        @stdout = stdout
         @check_mutex = Mutex.new
         @lock = ReadWriteLock.new
         @reload_error = nil
@@ -177,7 +177,7 @@ module Hanami
       rescue LoadError
         nil
       rescue StandardError => exception
-        @out.puts(
+        @stdout.puts(
           "[hanami] Could not render the reload error with hanami-webconsole " \
           "(#{exception.class}: #{exception.message})"
         )
@@ -196,21 +196,21 @@ module Hanami
         slice.reload
 
         elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-        @out.puts("[hanami] Reloaded in #{(elapsed * 1000).round}ms")
+        @stdout.puts("[hanami] Reloaded in #{(elapsed * 1000).round}ms")
       end
 
       def warn_reload_deferred
         open = @lock.readers
         responses = open == 1 ? "1 open response" : "#{open} open responses"
 
-        @out.puts(
+        @stdout.puts(
           "[hanami] Waiting for #{responses} to finish before reloading. " \
           "Until then, requests are served with the current code."
         )
       end
 
       def warn_restart_required(paths)
-        @out.puts(
+        @stdout.puts(
           "[hanami] #{paths.join(', ')} cannot be reloaded. " \
           "Restart the server to apply your changes."
         )

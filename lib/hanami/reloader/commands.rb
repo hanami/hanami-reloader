@@ -20,12 +20,12 @@ module Hanami
 
         desc "Remove obsolete code reloading configuration"
 
-        def call(*, **)
+        def call
           return unless fs.exist?(GUARDFILE)
           return unless fs.read(GUARDFILE).include?("guard \"puma\"")
 
           fs.delete(GUARDFILE)
-          stdout.puts "Removed #{GUARDFILE} (code reloading no longer uses Guard)"
+          puts "Removed #{GUARDFILE} (code reloading no longer uses Guard)"
         end
       end
 
@@ -83,7 +83,7 @@ module Hanami
         # @api private
         # @since 3.1.0
         def reloading_server
-          Reloader::Server.new(out: stdout, err: stderr)
+          Reloader::Server.new(stdout:, stderr:)
         end
       end
     end

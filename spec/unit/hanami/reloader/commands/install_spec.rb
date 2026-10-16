@@ -4,10 +4,10 @@ require "tmpdir"
 
 RSpec.describe Hanami::Reloader::Commands::Install do
   describe "#call" do
-    subject { described_class.new(fs: fs, stdout: out) }
+    subject { described_class.new(fs:, stdout:) }
 
     let(:fs) { Dry::Files.new }
-    let(:out) { StringIO.new }
+    let(:stdout) { StringIO.new }
     let(:dir) { Dir.mktmpdir }
 
     around do |example|
@@ -28,10 +28,10 @@ RSpec.describe Hanami::Reloader::Commands::Install do
       end
 
       it "removes it, since reloading no longer runs through Guard" do
-        subject.call({})
+        subject.call
 
         expect(fs.exist?("Guardfile")).to be(false)
-        expect(out.string).to include("Removed Guardfile")
+        expect(stdout.string).to include("Removed Guardfile")
       end
     end
 
@@ -39,7 +39,7 @@ RSpec.describe Hanami::Reloader::Commands::Install do
       before { fs.write("Guardfile", "guard \"rspec\" do\nend\n") }
 
       it "leaves it alone" do
-        subject.call({})
+        subject.call
 
         expect(fs.exist?("Guardfile")).to be(true)
       end
@@ -47,7 +47,7 @@ RSpec.describe Hanami::Reloader::Commands::Install do
 
     context "when no Guardfile is present" do
       it "does nothing" do
-        expect { subject.call({}) }.not_to raise_error
+        expect { subject.call }.not_to raise_error
 
         expect(fs.exist?("Guardfile")).to be(false)
       end
