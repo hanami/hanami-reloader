@@ -141,11 +141,11 @@ RSpec.describe Hanami::Reloader::Middleware do
       # it has rendered is how a spec can tell it is still the same instance.
       let(:webconsole_class) do
         Class.new do
-          attr_reader :app, :config, :rendered
+          attr_reader :app, :slice, :rendered
 
-          def initialize(app, config)
+          def initialize(app, slice)
             @app = app
-            @config = config
+            @slice = slice
             @rendered = []
           end
 
@@ -179,6 +179,12 @@ RSpec.describe Hanami::Reloader::Middleware do
 
         expect(status).to eq(500)
         expect(read(body)).to eq("rendered SyntaxError: unexpected end")
+      end
+
+      it "builds webconsole with the slice" do
+        expect(webconsole_class).to receive(:new).with(described_class::RERAISE, slice).and_call_original
+
+        middleware.call(env)
       end
 
       it "does not dispatch into the half-unloaded app" do

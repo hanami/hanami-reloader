@@ -173,7 +173,7 @@ module Hanami
         # Normally already loaded: the app's own stack requires it under this same condition.
         require "hanami/webconsole" unless defined?(Hanami::Webconsole::Middleware)
 
-        Hanami::Webconsole::Middleware.new(RERAISE, slice.config)
+        Hanami::Webconsole::Middleware.new(RERAISE, slice)
       rescue LoadError
         nil
       rescue StandardError => exception
