@@ -90,6 +90,7 @@ module Hanami
         reloaded = @lock.with_write_lock(timeout: wait) do
           reload
           @reload_error = nil
+          @error_app = nil # Its pages are from code this reload has just replaced.
           @file_checker.commit!
         rescue StandardError, ScriptError => exception
           # Include `ScriptError` (covering `SyntaxError` and `LoadError`) as a likely error to come
@@ -98,7 +99,7 @@ module Hanami
 
           @reload_error = exception
           @file_checker.failed! # Before building the error app, in case that raises.
-          @error_app ||= build_error_app
+          @error_app = build_error_app
         end
 
         if reloaded
@@ -158,9 +159,15 @@ module Hanami
       # Builds the middleware that renders a failed reload.
       #
       # This is the reloader's own webconsole instance rather than the app's, which is inside the
-      # stack the failed reload has just torn down. It is built once and kept for the life of the
-      # process, because the console on the page it renders addresses error pages by id in that
-      # instance's registry, over later requests.
+      # stack the failed reload has just torn down.
+      #
+      # It is kept for as long as this failed reload stays the current one, because the console on
+      # the page it renders addresses error pages by id in that instance's registry, over later
+      # requests. It is built anew for each failed reload, and dropped after a successful one. This
+      # matches how Hanami builds the app's own webconsole anew after every reload: a webconsole's
+      # pages hold bindings into the code that was loaded when they were rendered, so they must go
+      # away when that code does. A console request from an older page then finds no page, and
+      # webconsole tells the developer to refresh.
       #
       # If building the error app raises, that error is logged and nil is returned. The actual
       # reload error is what the developer needs to see, and it will still reach the server without

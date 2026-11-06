@@ -261,6 +261,36 @@ RSpec.describe Hanami::Reloader::Middleware do
           expect(read(body)).to eq("console for 1 page(s)")
         end
 
+        # Pages from the first failed reload hold bindings into code that the second one unloaded,
+        # so they must not stay reachable.
+        it "reach a new webconsole after another failed reload" do
+          middleware.call(env)
+          file_checker.touch!
+          middleware.call(env)
+
+          _status, _headers, body = middleware.call(console_env)
+
+          # One page rather than two means the first failed reload's webconsole is gone.
+          expect(read(body)).to eq("console for 1 page(s)")
+        end
+
+        it "reach a new webconsole when a reload fails again after succeeding" do
+          middleware.call(env)
+
+          allow(slice).to receive(:reload).and_return(true)
+          file_checker.touch!
+          # Read the body, which closes it. An open response holds off the next reload.
+          expect(read(middleware.call(env)[2])).to eq("ok")
+
+          allow(slice).to receive(:reload).and_raise(SyntaxError, "unexpected end")
+          file_checker.touch!
+          middleware.call(env)
+
+          _status, _headers, body = middleware.call(console_env)
+
+          expect(read(body)).to eq("console for 1 page(s)")
+        end
+
         it "do not attempt a reload" do
           middleware.call(env)
           checks = file_checker.checks
