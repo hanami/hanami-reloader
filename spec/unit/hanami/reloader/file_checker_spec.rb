@@ -90,6 +90,16 @@ RSpec.describe Hanami::Reloader::FileChecker do
       expect(file_checker.updated?).to be(true)
     end
 
+    it "sees YAML files, such as settings and translations" do
+      %w[config/settings/default.yml config/i18n/en.yml slices/main/config/i18n/en.yaml].each do |path|
+        w = described_class.new(root: dir)
+        write(path, "key: value\n")
+        touch(path)
+
+        expect(w.updated?).to be(true), "expected a change in #{path} to be seen"
+      end
+    end
+
     it "ignores files outside the watched directories" do
       file_checker
       write("node_modules/pkg/index.rb")

@@ -19,9 +19,11 @@ module Hanami
       # @since 3.1.0
       WATCHED_DIRS = %w[app config lib slices].freeze
 
+      # Ruby files and templates, plus YAML files such as settings files and translations.
+      #
       # @api private
       # @since 3.1.0
-      WATCHED_EXTENSIONS = %w[rb erb haml slim].freeze
+      WATCHED_EXTENSIONS = %w[rb erb haml slim yml yaml].freeze
 
       # Files that a reload cannot apply, because they are loaded once before the app exists.
       #
