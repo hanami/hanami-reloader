@@ -90,6 +90,38 @@ RSpec.describe Hanami::Reloader::FileChecker do
       expect(file_checker.updated?).to be(true)
     end
 
+    it "sees any file in a templates dir, whatever its extension" do
+      %w[
+        app/templates/feed.json.yajl
+        app/templates/sitemap.xml.builder
+        slices/main/templates/home.html.liquid
+        slices/main/slices/admin/templates/layouts/app.html.mustache
+      ].each do |path|
+        w = described_class.new(root: dir)
+        write(path, "content")
+        touch(path)
+
+        expect(w.updated?).to be(true), "expected a change in #{path} to be seen"
+      end
+    end
+
+    it "does not see files with other extensions outside templates dirs" do
+      file_checker
+      write("app/assets/app.js", "content")
+      touch("app/assets/app.js")
+
+      expect(file_checker.updated?).to be(false)
+    end
+
+    it "does not see a change to a templates dir itself, such as an editor adding a swap file" do
+      write("app/templates/layouts/app.html.erb", "<h1>hi</h1>")
+      file_checker
+      write("app/templates/layouts/.app.html.erb.swp", "swap")
+      touch("app/templates/layouts")
+
+      expect(file_checker.updated?).to be(false)
+    end
+
     it "sees YAML files, such as settings and translations" do
       %w[config/settings/default.yml config/i18n/en.yml slices/main/config/i18n/en.yaml].each do |path|
         w = described_class.new(root: dir)

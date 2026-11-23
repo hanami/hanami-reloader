@@ -25,6 +25,16 @@ module Hanami
       # @since 3.1.0
       WATCHED_EXTENSIONS = %w[rb erb haml slim yml yaml].freeze
 
+      # Directories whose files are all watched, whatever their extension.
+      #
+      # Templates can be in any format that Tilt supports, and their names can end in any extension
+      # (such as `.html.erb` or `.json.yajl`), so watching them by extension would miss some. This
+      # matches `app/templates/` as well as the `templates/` dir of every slice, nested slices too.
+      #
+      # @api private
+      # @since 3.1.0
+      WATCHED_ANY_FILE_DIRS = %w[templates].freeze
+
       # Files that a reload cannot apply, because they are loaded once before the app exists.
       #
       # @api private
@@ -43,7 +53,10 @@ module Hanami
       # @since 3.1.0
       def initialize(root:)
         @root = Pathname(root)
-        @glob = File.join("**", "*.{#{WATCHED_EXTENSIONS.join(",")}}")
+        @globs = [
+          File.join("**", "*.{#{WATCHED_EXTENSIONS.join(",")}}"),
+          File.join("**", "{#{WATCHED_ANY_FILE_DIRS.join(",")}}", "**", "*")
+        ]
         @signature = reloadable_signature
         @seen = @signature
         @failed = nil
@@ -117,7 +130,10 @@ module Hanami
       private
 
       def reloadable_signature
-        paths = WATCHED_DIRS.flat_map { |dir| Dir.glob(root.join(dir, @glob)) }
+        # A template with a watched extension matches both globs, so remove the duplicates.
+        paths = WATCHED_DIRS.flat_map { |dir|
+          @globs.flat_map { |glob| Dir.glob(root.join(dir, glob)) }
+        }.uniq
 
         # `config/app.rb` sits inside a watched directory but cannot be applied by a reload, so it
         # is excluded here and reported by {#restart_required} instead. Otherwise every edit to it
@@ -146,9 +162,16 @@ module Hanami
       # Only the hash is kept between requests, so memory does not grow with the app.
       #
       # `Dir.glob` returns paths sorted, so the same files always give the same hash.
+      #
+      # Directories are skipped. The templates glob matches them too, and a directory's mtime
+      # changes whenever a file is added to it, such as an editor's swap file when a template is
+      # opened. That would cause a reload when nothing has been edited.
       def signature(paths)
         entries = paths.filter_map do |path|
-          [path, File.mtime(path).to_f]
+          stat = File.stat(path)
+          next if stat.directory?
+
+          [path, stat.mtime.to_f]
         rescue Errno::ENOENT
           # Deleted between the glob and the stat; the next check will see a stable state.
           nil
