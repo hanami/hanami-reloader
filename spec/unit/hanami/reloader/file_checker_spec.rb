@@ -252,6 +252,40 @@ RSpec.describe Hanami::Reloader::FileChecker do
       expect(checker.restart_required).to eq(["Gemfile"])
     end
 
+    it "reports changes to .env files" do
+      paths = %w[.env .env.local .env.development .env.development.local]
+      paths.each { |path| write(path, "KEY=value\n") }
+      checker = described_class.new(root: dir)
+
+      paths.each { |path| touch(path) }
+
+      expect(checker.restart_required).to match_array(paths)
+    end
+
+    it "reports a .env file that is created after the server starts" do
+      checker = described_class.new(root: dir)
+      write(".env.local", "KEY=value\n")
+
+      expect(checker.restart_required).to eq([".env.local"])
+    end
+
+    it "reports a .env file that is deleted, since its values stay in ENV" do
+      write(".env.local", "KEY=value\n")
+      checker = described_class.new(root: dir)
+      FileUtils.rm(dir.join(".env.local"))
+
+      expect(checker.restart_required).to eq([".env.local"])
+      expect(checker.restart_required).to be_empty
+    end
+
+    it "ignores files that only start with .env, such as direnv's .envrc" do
+      write(".envrc", "export KEY=value\n")
+      checker = described_class.new(root: dir)
+      touch(".envrc")
+
+      expect(checker.restart_required).to be_empty
+    end
+
     it "tracks each file separately, so one change does not mask another" do
       write("Gemfile")
       checker = described_class.new(root: dir)

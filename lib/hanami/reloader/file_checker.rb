@@ -45,6 +45,20 @@ module Hanami
         "Gemfile.lock"
       ].freeze
 
+      # `.env` files, which a reload also cannot apply.
+      #
+      # Hanami loads these once, when loading `config/app.rb`. Since a reload keeps that class,
+      # Hanami never loads these .env files again. Even if it did, dotenv does not overwrite values
+      # already in `ENV`.
+      #
+      # This matches `.env` and `.env.*`, but not names like `.envrc`. It matches some files Hanami
+      # does not load for the current env (such as `.env.test` in development), but those are
+      # rarely edited while the server runs.
+      #
+      # @api private
+      # @since 3.1.0
+      DOTENV_GLOB = ".env{,.*}"
+
       # @api private
       # @since 3.1.0
       attr_reader :root
@@ -122,6 +136,8 @@ module Hanami
         current = restart_required_mtimes
 
         changed = current.reject { |path, mtime| @restart_mtimes[path] == mtime }.keys
+        # A deleted `.env` file is no longer globbed, but its values are still in `ENV`.
+        changed += @restart_mtimes.keys - current.keys
         @restart_mtimes = current
 
         changed
@@ -148,7 +164,7 @@ module Hanami
       # Keyed by the relative path so a change can be reported by name, and tracked individually so
       # that touching one file does not mask a change to another.
       def restart_required_mtimes
-        RESTART_REQUIRED_PATHS.to_h do |path|
+        (RESTART_REQUIRED_PATHS + Dir.glob(DOTENV_GLOB, base: root)).to_h do |path|
           [path, File.mtime(root.join(path)).to_f]
         rescue Errno::ENOENT
           [path, nil]
