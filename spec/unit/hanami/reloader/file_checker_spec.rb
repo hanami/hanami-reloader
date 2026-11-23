@@ -90,6 +90,48 @@ RSpec.describe Hanami::Reloader::FileChecker do
       expect(file_checker.updated?).to be(true)
     end
 
+    it "sees any file in a templates dir, whatever its extension" do
+      %w[
+        app/templates/feed.json.yajl
+        app/templates/sitemap.xml.builder
+        slices/main/templates/home.html.liquid
+        slices/main/slices/admin/templates/layouts/app.html.mustache
+      ].each do |path|
+        w = described_class.new(root: dir)
+        write(path, "content")
+        touch(path)
+
+        expect(w.updated?).to be(true), "expected a change in #{path} to be seen"
+      end
+    end
+
+    it "does not see files with other extensions outside templates dirs" do
+      file_checker
+      write("app/assets/app.js", "content")
+      touch("app/assets/app.js")
+
+      expect(file_checker.updated?).to be(false)
+    end
+
+    it "does not see a change to a templates dir itself, such as an editor adding a swap file" do
+      write("app/templates/layouts/app.html.erb", "<h1>hi</h1>")
+      file_checker
+      write("app/templates/layouts/.app.html.erb.swp", "swap")
+      touch("app/templates/layouts")
+
+      expect(file_checker.updated?).to be(false)
+    end
+
+    it "sees YAML files, such as translations" do
+      %w[config/i18n/en.yml slices/main/config/i18n/en.yaml].each do |path|
+        w = described_class.new(root: dir)
+        write(path, "key: value\n")
+        touch(path)
+
+        expect(w.updated?).to be(true), "expected a change in #{path} to be seen"
+      end
+    end
+
     it "ignores files outside the watched directories" do
       file_checker
       write("node_modules/pkg/index.rb")
@@ -107,6 +149,15 @@ RSpec.describe Hanami::Reloader::FileChecker do
 
       expect(w.updated?).to be(false)
       expect(w.restart_required).to eq(["config/app.rb"])
+    end
+
+    it "does not treat settings files as reloadable, since a reload cannot apply them" do
+      write("config/settings/default.yml", "key: value\n")
+      w = described_class.new(root: dir)
+      touch("config/settings/default.yml")
+
+      expect(w.updated?).to be(false)
+      expect(w.restart_required).to eq(["config/settings/default.yml"])
     end
 
     it "keeps reporting a change until it is committed" do
@@ -208,6 +259,66 @@ RSpec.describe Hanami::Reloader::FileChecker do
       touch("Gemfile")
 
       expect(checker.restart_required).to eq(["Gemfile"])
+    end
+
+    it "reports changes to .env files" do
+      paths = %w[.env .env.local .env.development .env.development.local]
+      paths.each { |path| write(path, "KEY=value\n") }
+      checker = described_class.new(root: dir)
+
+      paths.each { |path| touch(path) }
+
+      expect(checker.restart_required).to match_array(paths)
+    end
+
+    it "reports a .env file that is created after the server starts" do
+      checker = described_class.new(root: dir)
+      write(".env.local", "KEY=value\n")
+
+      expect(checker.restart_required).to eq([".env.local"])
+    end
+
+    it "reports a .env file that is deleted, since its values stay in ENV" do
+      write(".env.local", "KEY=value\n")
+      checker = described_class.new(root: dir)
+      FileUtils.rm(dir.join(".env.local"))
+
+      expect(checker.restart_required).to eq([".env.local"])
+      expect(checker.restart_required).to be_empty
+    end
+
+    it "reports changes to settings files" do
+      paths = %w[config/settings/default.yml config/settings/development.yml]
+      paths.each { |path| write(path, "key: value\n") }
+      checker = described_class.new(root: dir)
+
+      paths.each { |path| touch(path) }
+
+      expect(checker.restart_required).to match_array(paths)
+    end
+
+    it "reports a settings file that is created after the server starts" do
+      checker = described_class.new(root: dir)
+      write("config/settings/development.yml", "key: value\n")
+
+      expect(checker.restart_required).to eq(["config/settings/development.yml"])
+    end
+
+    it "reports a settings file that is deleted, since its values stay loaded" do
+      write("config/settings/development.yml", "key: value\n")
+      checker = described_class.new(root: dir)
+      FileUtils.rm(dir.join("config/settings/development.yml"))
+
+      expect(checker.restart_required).to eq(["config/settings/development.yml"])
+      expect(checker.restart_required).to be_empty
+    end
+
+    it "ignores files that only start with .env, such as direnv's .envrc" do
+      write(".envrc", "export KEY=value\n")
+      checker = described_class.new(root: dir)
+      touch(".envrc")
+
+      expect(checker.restart_required).to be_empty
     end
 
     it "tracks each file separately, so one change does not mask another" do
