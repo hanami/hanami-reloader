@@ -11,18 +11,11 @@ module Hanami
     # (`node_modules/` and friends are never visited).
     #
     # @api private
-    # @since 3.1.0
     class FileChecker
       # Directories whose contents {Hanami::Slice#reload} is able to pick up.
-      #
-      # @api private
-      # @since 3.1.0
       WATCHED_DIRS = %w[app config lib slices].freeze
 
       # Ruby files and templates, plus YAML files such as settings files and translations.
-      #
-      # @api private
-      # @since 3.1.0
       WATCHED_EXTENSIONS = %w[rb erb haml slim yml yaml].freeze
 
       # Directories whose files are all watched, whatever their extension.
@@ -30,15 +23,9 @@ module Hanami
       # Templates can be in any format that Tilt supports, and their names can end in any extension
       # (such as `.html.erb` or `.json.yajl`), so watching them by extension would miss some. This
       # matches `app/templates/` as well as the `templates/` dir of every slice, nested slices too.
-      #
-      # @api private
-      # @since 3.1.0
       WATCHED_ANY_FILE_DIRS = %w[templates].freeze
 
       # Files that a reload cannot apply, because they are loaded once before the app exists.
-      #
-      # @api private
-      # @since 3.1.0
       RESTART_REQUIRED_PATHS = [
         File.join("config", "app.rb"),
         "Gemfile",
@@ -54,17 +41,10 @@ module Hanami
       # This matches `.env` and `.env.*`, but not names like `.envrc`. It matches some files Hanami
       # does not load for the current env (such as `.env.test` in development), but those are
       # rarely edited while the server runs.
-      #
-      # @api private
-      # @since 3.1.0
       DOTENV_GLOB = ".env{,.*}"
 
-      # @api private
-      # @since 3.1.0
       attr_reader :root
 
-      # @api private
-      # @since 3.1.0
       def initialize(root:)
         @root = Pathname(root)
         @globs = [
@@ -85,9 +65,6 @@ module Hanami
       # as having been applied.
       #
       # @return [Boolean]
-      #
-      # @api private
-      # @since 3.1.0
       def updated?
         @seen = reloadable_signature
 
@@ -102,9 +79,6 @@ module Hanami
       #
       # The files are not checked again here. A file saved while the reload was running may not
       # have been loaded, so it must stay outstanding for the next {#updated?} to report.
-      #
-      # @api private
-      # @since 3.1.0
       def commit!
         @signature = @seen
         @failed = nil
@@ -116,9 +90,6 @@ module Hanami
       # Nothing is committed: the change stays outstanding, so saving a fix is still picked up.
       # What this does stop is {#updated?} reporting that same state again, which would otherwise
       # have every request re-run a reload already known to raise.
-      #
-      # @api private
-      # @since 3.1.0
       def failed!
         @failed = @seen
         self
@@ -129,9 +100,6 @@ module Hanami
       # Unlike {#updated?} this records what it saw, so each change is reported once.
       #
       # @return [Array<String>] paths relative to the app root, empty if nothing changed
-      #
-      # @api private
-      # @since 3.1.0
       def restart_required
         current = restart_required_mtimes
 
